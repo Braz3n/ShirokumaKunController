@@ -2,6 +2,7 @@
 #define CMD_GEN
 
 #include "pico/stdlib.h"
+#include "stdint.h"
 
 #define COMMAND_BYTE_COUNT 53  // Data including preamble and parity bytes
 #define COMMAND_DATA_COUNT 25  // Data only count

@@ -1,5 +1,7 @@
 #include "cmd_gen.h"
 
+#include "string.h"
+
 const uint8_t command_preamble[3]                = {0x01, 0x10, 0x00};
 uint8_t       command_buffer[COMMAND_BYTE_COUNT] = {0};
 
