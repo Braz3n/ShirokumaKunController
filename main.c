@@ -11,6 +11,7 @@
 #include "pico/cyw43_arch.h"
 #include "pico/stdlib.h"
 #include "ping.h"
+#include "scd40.h"
 #include "task.h"
 #include "tusb.h"
 
@@ -54,11 +55,15 @@ void main_task(__unused void *params) {
 }
 
 void vLaunch(void) {
+  verify_checksum_calculation();
+
+  while (1);
+
   TaskHandle_t task;
   // xTaskCreate(ir_recv_task, "IrRecvTask", configMINIMAL_STACK_SIZE, NULL, TEST_TASK_PRIORITY,
   //             &task);
-  xTaskCreate(ir_send_task, "IrSendTask", configMINIMAL_STACK_SIZE, NULL, TEST_TASK_PRIORITY,
-              &task);
+  // xTaskCreate(ir_send_task, "IrSendTask", configMINIMAL_STACK_SIZE, NULL, TEST_TASK_PRIORITY,
+  //             &task);
   // xTaskCreate(decompose_test_task, "IrTestTask", configMINIMAL_STACK_SIZE, NULL,
   // TEST_TASK_PRIORITY,
   //             &task);

@@ -52,6 +52,7 @@ add_executable(${APP_NAME}
     main.c
     ir_recv.c
     ir_send.c
+    scd40.c
     cmd_gen.c
     ${PICO_LWIP_CONTRIB_PATH}/apps/ping/ping.c
 )
