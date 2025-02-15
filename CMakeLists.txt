@@ -51,6 +51,7 @@ set(WIFI_PASSWORD $ENV{WIFI_PASSWORD} CACHE INTERNAL "WiFi password for examples
 add_executable(${APP_NAME}
     main.c
     ir_recv.c
+    ir_send.c
     cmd_gen.c
     ${PICO_LWIP_CONTRIB_PATH}/apps/ping/ping.c
 )

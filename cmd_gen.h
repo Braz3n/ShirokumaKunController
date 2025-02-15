@@ -33,7 +33,7 @@ enum AirconFanSpeed {
   AC_FAN_5    = 0x6,
 };
 
-uint8_t* populate_command_buffer(enum AirconUpdateType update_type, enum AirconMode mode,
+uint8_t *populate_command_buffer(enum AirconUpdateType update_type, enum AirconMode mode,
                                  enum AirconFanSpeed fan_speed, uint8_t temperature,
                                  uint16_t timer_on_duration, uint16_t timer_off_duration);
 

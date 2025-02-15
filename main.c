@@ -6,6 +6,7 @@
 
 #include "FreeRTOS.h"
 #include "ir_recv.h"
+#include "ir_send.h"
 #include "lwip/ip4_addr.h"
 #include "pico/cyw43_arch.h"
 #include "pico/stdlib.h"
