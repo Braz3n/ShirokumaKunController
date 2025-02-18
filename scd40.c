@@ -1,14 +1,54 @@
 #include "scd40.h"
 
+#include "hardware/i2c.h"
+#include "pico/binary_info.h"
 #include "stdio.h"
 
 // https://d2air1d4eqhwg2.cloudfront.net/media/files/262fda6e-3a57-4326-b93d-a9d627defdc4.pdf
 
-#define SCD40_ADDR
+#define SCD40_ADDR      0x62
 #define CRC8_POLYNOMIAL 0x31
 #define CRC8_INIT       0xFF
 
-uint8_t scd40_checksum(const uint8_t* data, uint16_t count) {
+#define MAX_READ_BYTES 9
+
+enum SCD4xCommand {
+  // Basic Commands
+  SCD4x_CMD_START_PERIODIC   = 0x21B1,
+  SCD4x_CMD_READ_MEASUREMENT = 0xEC05,
+  SCD4x_CMD_STOP_PERIODIC    = 0x3F86,
+
+  // On-chip Output Signal Compensation
+  SCD4x_CMD_SET_TEMPERATURE_OFFSET = 0x241D,
+  SCD4x_CMD_GET_TEMPERATURE_OFFSET = 0x2318,
+  SCD4x_CMD_SET_SENSOR_ALTITUDE    = 0x2427,
+  SCD4x_CMD_GET_SENSOR_ALTITUDE    = 0x2322,
+  SCD4x_CMD_SET_AMBIENT_PRESSURE   = 0xE000,
+
+  // Field Calibration
+  SCD4x_CMD_PERFORM_FORCED_RECALIBRATION           = 0x362F,
+  SCD4x_CMD_SET_AUTOMATIC_SELF_CALIBRATION_ENABLED = 0x2416,
+  SCD4x_CMD_GET_AUTOMATIC_SELF_CALIBRATION_ENABLED = 0x2313,
+
+  // Low Power
+  SCD4x_CMD_START_LOW_POWER_PERIODIC_MEASUREMENT = 0x21AC,
+  SCD4x_CMD_GET_DATA_READY_STATUS                = 0xE4B8,
+
+  // Advanced Features
+  SCD4x_CMD_PERSIST_SETTINGS      = 0x3615,
+  SCD4x_CMD_GET_SERIAL_NUMBER     = 0x3682,
+  SCD4x_CMD_PERFORM_SELF_TEST     = 0x3639,
+  SCD4x_CMD_PERFORM_FACTORY_RESET = 0x3632,
+  SCD4x_CMD_REINIT                = 0x3646,
+
+  // Low Power Single Shot (SCD41 only)
+  SCD4x_CMD_MEASURE_SINGLE_SHOT          = 0x219D,
+  SCD4x_CMD_MEASURE_SINGLE_SHOT_RHT_ONLY = 0x2196,
+};
+
+static bool running_periodic_mode = false;
+
+uint8_t scd40_checksum(const uint8_t *data, uint16_t count) {
   uint8_t crc = CRC8_INIT;
 
   for (uint16_t current_byte = 0; current_byte < count; current_byte++) {
@@ -37,14 +77,103 @@ void verify_checksum_calculation() {
   }
 }
 
-void scd40_write() {}
+int32_t scd40_write(uint16_t command, bool add_checksum, bool stop_bit) {
+  uint8_t crc = scd40_checksum((uint8_t *)&command, 2);
+  uint8_t transfer[3];
 
-void scd40_send() {}
+  if (add_checksum) {
+    transfer[0] = command >> 8;
+    transfer[1] = command & 0xFF;
+    transfer[2] = crc;
+    i2c_write_blocking(i2c_default, SCD40_ADDR, transfer, 3, stop_bit);
+  } else {
+    transfer[0] = command >> 8;
+    transfer[1] = command & 0xFF;
+    transfer[2] = 0x00;  // Not used
+    i2c_write_blocking(i2c_default, SCD40_ADDR, transfer, 2, stop_bit);
+  }
 
-void scd40_read() {
-  // We need to wait for a bit between the request and response stages of this command
+  printf("transfer[0] 0x%X\n", transfer[0]);
+  printf("transfer[1] 0x%X\n", transfer[1]);
+  printf("transfer[2] 0x%X\n", transfer[2]);
+
+  return PICO_ERROR_NONE;
 }
 
-void scd40_fetch() {
-  // We need to wait for a bit between the send and fetch stages of this command
+int32_t scd40_write_header(uint16_t command, bool stop_bit) {
+  // TODO figure out CRC location
+  uint8_t crc = scd40_checksum((uint8_t *)&command, 2);
+  uint8_t transfer[2];
+
+  transfer[0] = command >> 8;
+  transfer[1] = command & 0xFF;
+  i2c_write_blocking(i2c_default, SCD40_ADDR, transfer, 2, stop_bit);
+
+  printf("transfer[0] 0x%X\n", transfer[0]);
+  printf("transfer[1] 0x%X\n", transfer[1]);
+
+  return PICO_ERROR_NONE;
+}
+
+int32_t scd40_read(uint8_t *data, uint8_t len, uint32_t delay_ms) {
+  // We need to wait for a bit between the request and response stages of this command
+  uint8_t raw_data[MAX_READ_BYTES] = {0};
+  uint8_t raw_len = len + (len >> 1);  // Half the length is added again for CRC bytes
+
+  sleep_ms(delay_ms);
+  i2c_read_blocking(i2c_default, SCD40_ADDR, raw_data, raw_len, true);
+
+  uint8_t output_data_index = 0;
+  for (int i = 0; i < raw_len; i += 3) {
+    // Check that the received data is valid
+    uint8_t expected_checksum = scd40_checksum(&(raw_data[i]), 2);
+    if (expected_checksum != raw_data[i + 2]) {
+      printf("Bad checksum recieved for block %u\n", i);
+      return PICO_ERROR_INVALID_DATA;
+    }
+
+    // Write out the received data
+    data[output_data_index]     = raw_data[i];
+    data[output_data_index + 1] = raw_data[i + 1];
+    output_data_index += 2;
+  }
+
+  return PICO_ERROR_NONE;
+}
+
+void scd40_init(bool enable_internal_pullup) {
+  i2c_init(i2c_default, 100 * 1000);
+  gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
+  gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
+  if (enable_internal_pullup) {
+    gpio_pull_up(PICO_DEFAULT_I2C_SDA_PIN);
+    gpio_pull_up(PICO_DEFAULT_I2C_SCL_PIN);
+  }
+  // Populate metadata in the binary for picotool
+  bi_decl(bi_2pins_with_func(PICO_DEFAULT_I2C_SDA_PIN, PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C));
+
+  sleep_ms(1000);  // Wait for powerup
+}
+
+int32_t scd40_get_serial_number(uint16_t *serial_number) {
+  printf("Getting serial number\n");
+  if (running_periodic_mode) {
+    return PICO_ERROR_INVALID_STATE;
+  }
+  scd40_write_header(SCD4x_CMD_GET_SERIAL_NUMBER, false);
+
+  uint8_t output[6] = {0};
+  scd40_read(output, 6, 1);
+
+  serial_number[2] = (uint16_t)(output[4] << 8) | output[5];
+  serial_number[1] = (uint16_t)(output[2] << 8) | output[3];
+  serial_number[0] = (uint16_t)(output[0] << 8) | output[1];
+
+  printf("Serial Number: 0x%04X %04X %04X\n", serial_number[0], serial_number[1], serial_number[2]);
+
+  for (int i = 0; i < 6; i++) {
+    printf("%u: 0x%02X\n", i, output[i]);
+  }
+
+  return PICO_ERROR_NONE;
 }
