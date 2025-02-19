@@ -14,9 +14,9 @@
 
 enum SCD4xCommand {
   // Basic Commands
-  SCD4x_CMD_START_PERIODIC   = 0x21B1,
-  SCD4x_CMD_READ_MEASUREMENT = 0xEC05,
-  SCD4x_CMD_STOP_PERIODIC    = 0x3F86,
+  SCD4x_CMD_START_PERIODIC_MEASUREMENT = 0x21B1,
+  SCD4x_CMD_READ_MEASUREMENT           = 0xEC05,
+  SCD4x_CMD_STOP_PERIODIC_MEASUREMENT  = 0x3F86,
 
   // On-chip Output Signal Compensation
   SCD4x_CMD_SET_TEMPERATURE_OFFSET = 0x241D,
@@ -176,4 +176,57 @@ int32_t scd40_get_serial_number(uint16_t *serial_number) {
   }
 
   return PICO_ERROR_NONE;
+}
+
+//////////////////////////
+// Header Only Commands //
+//////////////////////////
+int32_t scd40_header_only_command(uint16_t command, bool allowed_during_periodic,
+                                  uint32_t delay_ms) {
+  if (running_periodic_mode && allowed_during_periodic) {
+    return PICO_ERROR_INVALID_STATE;
+  }
+  scd40_write_header(command, true);
+  if (delay_ms > 0) {
+    sleep_ms(delay_ms);
+  }
+
+  return PICO_ERROR_NONE;
+}
+
+int32_t scd40_start_periodic_measurement() {
+  printf("Starting periodic measurements\n");
+  return scd40_header_only_command(SCD4x_CMD_START_PERIODIC_MEASUREMENT, false, 0);
+}
+
+int32_t scd40_start_low_power_periodic_measurement() {
+  printf("Starting low power periodic measurements\n");
+  return scd40_header_only_command(SCD4x_CMD_START_LOW_POWER_PERIODIC_MEASUREMENT, false, 0);
+}
+
+int32_t scd40_stop_periodic_measurement() {
+  printf("Stopping periodic measurements\n");
+  return scd40_header_only_command(SCD4x_CMD_STOP_PERIODIC_MEASUREMENT, true, 500);
+}
+
+int32_t scd40_perform_factory_reset() {
+  printf("Performing factory reset\n");
+  return scd40_header_only_command(SCD4x_CMD_PERFORM_FACTORY_RESET, false, 1200);
+}
+
+int32_t scd40_reinit() {
+  printf("Stopping periodic measurements\n");
+  return scd40_header_only_command(SCD4x_CMD_REINIT, false, 20);
+}
+
+int32_t scd40_measure_single_shot() {
+  return PICO_ERROR_VERSION_MISMATCH;  // Not permitted for the SCD40
+  printf("Performing single shot measurement\n");
+  return scd40_header_only_command(SCD4x_CMD_MEASURE_SINGLE_SHOT, false, 5000);
+}
+
+int32_t scd40_measure_single_shot_rht_only() {
+  return PICO_ERROR_VERSION_MISMATCH;  // Not permitted for the SCD40
+  printf("Performing single shot measurement (humidity and temperature only)\n");
+  return scd40_header_only_command(SCD4x_CMD_MEASURE_SINGLE_SHOT_RHT_ONLY, false, 50);
 }
