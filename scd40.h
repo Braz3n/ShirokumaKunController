@@ -22,4 +22,10 @@ int32_t scd40_get_data_ready_status(bool *data_waiting);
 int32_t scd40_get_serial_number(uint16_t *serial_number);
 int32_t scd40_perform_self_test();
 
+// Write Only Commands
+int32_t scd40_set_temperature_offset(uint16_t offset);
+int32_t scd40_set_sensor_altitude(uint16_t altitude);
+int32_t scd40_set_ambient_pressure(uint16_t pressure_pa);
+int32_t scd40_set_automatic_self_calibration_enabled(bool enabled);
+
 #endif  // SCD40_H

@@ -77,25 +77,18 @@ void verify_checksum_calculation() {
   }
 }
 
-int32_t scd40_write(uint16_t command, bool add_checksum, bool stop_bit) {
-  uint8_t crc = scd40_checksum((uint8_t *)&command, 2);
+int32_t scd40_write(uint16_t data, bool stop_bit) {
+  uint8_t crc = scd40_checksum((uint8_t *)&data, 2);
   uint8_t transfer[3];
 
-  if (add_checksum) {
-    transfer[0] = command >> 8;
-    transfer[1] = command & 0xFF;
-    transfer[2] = crc;
-    i2c_write_blocking(i2c_default, SCD40_ADDR, transfer, 3, stop_bit);
-  } else {
-    transfer[0] = command >> 8;
-    transfer[1] = command & 0xFF;
-    transfer[2] = 0x00;  // Not used
-    i2c_write_blocking(i2c_default, SCD40_ADDR, transfer, 2, stop_bit);
-  }
+  transfer[0] = data >> 8;
+  transfer[1] = data & 0xFF;
+  transfer[2] = crc;
+  i2c_write_blocking(i2c_default, SCD40_ADDR, transfer, 3, stop_bit);
 
-  printf("transfer[0] 0x%X\n", transfer[0]);
-  printf("transfer[1] 0x%X\n", transfer[1]);
-  printf("transfer[2] 0x%X\n", transfer[2]);
+  printf("scd40_write[0] 0x%X\n", transfer[0]);
+  printf("scd40_write[1] 0x%X\n", transfer[1]);
+  printf("scd40_write[2] 0x%X\n", transfer[2]);
 
   return PICO_ERROR_NONE;
 }
@@ -260,7 +253,7 @@ int32_t scd40_get_temperature_offset(uint16_t *temp_offset) {
   uint8_t output[2] = {0};
   int32_t err       = PICO_ERROR_NONE;
 
-  err = scd40_read_command(SCD4x_CMD_GET_TEMPERATURE_OFFSET, true, 1, output, 2);
+  err = scd40_read_command(SCD4x_CMD_GET_TEMPERATURE_OFFSET, false, 1, output, 2);
   if (err) {
     printf("Non zero error code!\n");
   }
@@ -276,7 +269,7 @@ int32_t scd40_get_sensor_altitude(uint16_t *altitude_meters) {
   uint8_t output[2] = {0};
   int32_t err       = PICO_ERROR_NONE;
 
-  err = scd40_read_command(SCD4x_CMD_GET_SENSOR_ALTITUDE, true, 1, output, 2);
+  err = scd40_read_command(SCD4x_CMD_GET_SENSOR_ALTITUDE, false, 1, output, 2);
   if (err) {
     printf("Non zero error code!\n");
   }
@@ -291,7 +284,7 @@ int32_t scd40_get_automatic_self_calibration_enabled(bool *self_calibration_enab
   uint8_t output[2] = {0};
   int32_t err       = PICO_ERROR_NONE;
 
-  err = scd40_read_command(SCD4x_CMD_GET_AUTOMATIC_SELF_CALIBRATION_ENABLED, true, 1, output, 2);
+  err = scd40_read_command(SCD4x_CMD_GET_AUTOMATIC_SELF_CALIBRATION_ENABLED, false, 1, output, 2);
   if (err) {
     printf("Non zero error code!\n");
   }
@@ -345,7 +338,7 @@ int32_t scd40_perform_self_test() {
   uint8_t output[2] = {0};
   int32_t err       = PICO_ERROR_NONE;
 
-  err = scd40_read_command(SCD4x_CMD_PERFORM_SELF_TEST, true, 1, output, 2);
+  err = scd40_read_command(SCD4x_CMD_PERFORM_SELF_TEST, false, 10000, output, 2);
   if (err) {
     printf("Non zero error code!\n");
   }
@@ -355,6 +348,85 @@ int32_t scd40_perform_self_test() {
   if (self_test_result != 0) {
     printf("Self test failed!\n");
     err = PICO_ERROR_GENERIC;
+  }
+
+  return err;
+}
+
+/////////////////////////
+// Write Only Commands //
+/////////////////////////
+
+// These commands are refered to as "write" in the datasheet
+int32_t scd40_write_command(uint16_t command, bool allowed_during_periodic, uint32_t delay_ms,
+                            uint16_t data) {
+  int32_t err = PICO_ERROR_NONE;
+  if (running_periodic_mode && allowed_during_periodic) {
+    err = PICO_ERROR_INVALID_STATE;
+  }
+
+  if (err == PICO_ERROR_NONE) {
+    err = scd40_write_header(command, true);
+  }
+
+  if (err == PICO_ERROR_NONE) {
+    err = scd40_write(data, true);
+  }
+
+  if (delay_ms > 0 && err == PICO_ERROR_NONE) {
+    sleep_ms(delay_ms);
+  }
+
+  return err;
+}
+
+int32_t scd40_set_temperature_offset(uint16_t offset) {
+  printf("Setting SCD40x temperature offset...\n");
+  int32_t err = PICO_ERROR_NONE;
+
+  uint16_t post_processed_offset = offset * (1 << 16) / 175;
+  err = scd40_write_command(SCD4x_CMD_SET_TEMPERATURE_OFFSET, false, 1, post_processed_offset);
+  if (err) {
+    printf("Non zero error code!\n");
+  }
+
+  return err;
+}
+
+int32_t scd40_set_sensor_altitude(uint16_t altitude) {
+  printf("Setting SCD40x sensor altitude...\n");
+  int32_t err = PICO_ERROR_NONE;
+
+  err = scd40_write_command(SCD4x_CMD_SET_SENSOR_ALTITUDE, false, 1, altitude);
+  if (err) {
+    printf("Non zero error code!\n");
+  }
+
+  return err;
+}
+
+int32_t scd40_set_ambient_pressure(uint16_t pressure_pa) {
+  printf("Setting SCD40x ambient pressure...\n");
+  int32_t err = PICO_ERROR_NONE;
+
+  uint16_t post_processed_pressure = pressure_pa / 100;
+  err = scd40_write_command(SCD4x_CMD_SET_AMBIENT_PRESSURE, false, 1, post_processed_pressure);
+  if (err) {
+    printf("Non zero error code!\n");
+  }
+
+  return err;
+}
+
+int32_t scd40_set_automatic_self_calibration_enabled(bool enabled) {
+  printf("Setting SCD40x sensor altitude...\n");
+  int32_t err = PICO_ERROR_NONE;
+
+  uint16_t self_calibration_status = enabled ? 1 : 0;
+  err = scd40_write_command(SCD4x_CMD_SET_AUTOMATIC_SELF_CALIBRATION_ENABLED, false, 1,
+                            self_calibration_status);
+  if (err) {
+    printf("Non zero error code!\n");
   }
 
   return err;
