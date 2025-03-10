@@ -255,6 +255,52 @@ int32_t scd40_read_measurement(uint16_t *co2_ppm, uint16_t *temp_cel, uint16_t *
   return err;
 }
 
+int32_t scd40_get_temperature_offset(uint16_t *temp_offset) {
+  printf("Checking SCD40x temperature offset...\n");
+  uint8_t output[2] = {0};
+  int32_t err       = PICO_ERROR_NONE;
+
+  err = scd40_read_command(SCD4x_CMD_GET_TEMPERATURE_OFFSET, true, 1, output, 2);
+  if (err) {
+    printf("Non zero error code!\n");
+  }
+
+  *temp_offset = (uint16_t)(output[0] << 8) | output[1];
+  *temp_offset = 175 * ((uint32_t)*temp_offset) / (1 << 16);  // Apply post-processing
+
+  return err;
+}
+
+int32_t scd40_get_sensor_altitude(uint16_t *altitude_meters) {
+  printf("Checking SCD40x sensor altitude...\n");
+  uint8_t output[2] = {0};
+  int32_t err       = PICO_ERROR_NONE;
+
+  err = scd40_read_command(SCD4x_CMD_GET_SENSOR_ALTITUDE, true, 1, output, 2);
+  if (err) {
+    printf("Non zero error code!\n");
+  }
+
+  *altitude_meters = (uint16_t)(output[0] << 8) | output[1];
+
+  return err;
+}
+
+int32_t scd40_get_automatic_self_calibration_enabled(bool *self_calibration_enabled) {
+  printf("Checking SCD40x automatic self-calibration enabled...\n");
+  uint8_t output[2] = {0};
+  int32_t err       = PICO_ERROR_NONE;
+
+  err = scd40_read_command(SCD4x_CMD_GET_AUTOMATIC_SELF_CALIBRATION_ENABLED, true, 1, output, 2);
+  if (err) {
+    printf("Non zero error code!\n");
+  }
+
+  *self_calibration_enabled = ((uint16_t)(output[0] << 8) | output[1]) == 1;
+
+  return err;
+}
+
 int32_t scd40_get_data_ready_status(bool *data_waiting) {
   printf("Checking for waiting SCD40x measurement...\n");
   uint8_t output[2] = {0};
@@ -289,6 +335,26 @@ int32_t scd40_get_serial_number(uint16_t *serial_number) {
   printf("Serial Number: 0x%04X %04X %04X\n", serial_number[0], serial_number[1], serial_number[2]);
   for (int i = 0; i < 6; i++) {
     printf("%u: 0x%02X\n", i, output[i]);
+  }
+
+  return err;
+}
+
+int32_t scd40_perform_self_test() {
+  printf("Checking SCD40x self test result...\n");
+  uint8_t output[2] = {0};
+  int32_t err       = PICO_ERROR_NONE;
+
+  err = scd40_read_command(SCD4x_CMD_PERFORM_SELF_TEST, true, 1, output, 2);
+  if (err) {
+    printf("Non zero error code!\n");
+  }
+
+  uint16_t self_test_result = ((uint16_t)(output[0] << 8) | output[1]) == 1;
+
+  if (self_test_result != 0) {
+    printf("Self test failed!\n");
+    err = PICO_ERROR_GENERIC;
   }
 
   return err;

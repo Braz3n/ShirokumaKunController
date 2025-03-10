@@ -15,7 +15,11 @@ int32_t scd40_measure_single_shot_rht_only();
 
 // Read Only Commands
 int32_t scd40_read_measurement(uint16_t *co2_ppm, uint16_t *temp_cel, uint16_t *rel_humidity);
+int32_t scd40_get_temperature_offset(uint16_t *temp_offset);
+int32_t scd40_get_sensor_altitude(uint16_t *altitude_meters);
+int32_t scd40_get_automatic_self_calibration_enabled(bool *self_calibration_enabled);
 int32_t scd40_get_data_ready_status(bool *data_waiting);
 int32_t scd40_get_serial_number(uint16_t *serial_number);
+int32_t scd40_perform_self_test();
 
 #endif  // SCD40_H
