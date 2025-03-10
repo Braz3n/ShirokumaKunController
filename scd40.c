@@ -102,7 +102,6 @@ int32_t scd40_write(uint16_t command, bool add_checksum, bool stop_bit) {
 
 int32_t scd40_write_header(uint16_t command, bool stop_bit) {
   // TODO figure out CRC location
-  uint8_t crc = scd40_checksum((uint8_t *)&command, 2);
   uint8_t transfer[2];
 
   transfer[0] = command >> 8;
@@ -115,12 +114,11 @@ int32_t scd40_write_header(uint16_t command, bool stop_bit) {
   return PICO_ERROR_NONE;
 }
 
-int32_t scd40_read(uint8_t *data, uint8_t len, uint32_t delay_ms) {
+int32_t scd40_read(uint8_t *data, uint8_t len) {
   // We need to wait for a bit between the request and response stages of this command
   uint8_t raw_data[MAX_READ_BYTES] = {0};
   uint8_t raw_len = len + (len >> 1);  // Half the length is added again for CRC bytes
 
-  sleep_ms(delay_ms);
   i2c_read_blocking(i2c_default, SCD40_ADDR, raw_data, raw_len, true);
 
   uint8_t output_data_index = 0;
@@ -155,32 +153,11 @@ void scd40_init(bool enable_internal_pullup) {
   sleep_ms(1000);  // Wait for powerup
 }
 
-int32_t scd40_get_serial_number(uint16_t *serial_number) {
-  printf("Getting serial number\n");
-  if (running_periodic_mode) {
-    return PICO_ERROR_INVALID_STATE;
-  }
-  scd40_write_header(SCD4x_CMD_GET_SERIAL_NUMBER, false);
-
-  uint8_t output[6] = {0};
-  scd40_read(output, 6, 1);
-
-  serial_number[2] = (uint16_t)(output[4] << 8) | output[5];
-  serial_number[1] = (uint16_t)(output[2] << 8) | output[3];
-  serial_number[0] = (uint16_t)(output[0] << 8) | output[1];
-
-  printf("Serial Number: 0x%04X %04X %04X\n", serial_number[0], serial_number[1], serial_number[2]);
-
-  for (int i = 0; i < 6; i++) {
-    printf("%u: 0x%02X\n", i, output[i]);
-  }
-
-  return PICO_ERROR_NONE;
-}
-
 //////////////////////////
 // Header Only Commands //
 //////////////////////////
+
+// These commands are refered to as "send command" in the datasheet
 int32_t scd40_header_only_command(uint16_t command, bool allowed_during_periodic,
                                   uint32_t delay_ms) {
   if (running_periodic_mode && allowed_during_periodic) {
@@ -229,4 +206,52 @@ int32_t scd40_measure_single_shot_rht_only() {
   return PICO_ERROR_VERSION_MISMATCH;  // Not permitted for the SCD40
   printf("Performing single shot measurement (humidity and temperature only)\n");
   return scd40_header_only_command(SCD4x_CMD_MEASURE_SINGLE_SHOT_RHT_ONLY, false, 50);
+}
+
+////////////////////////
+// Read Only Commands //
+////////////////////////
+
+// These commands are refered to as "read" in the datasheet
+int32_t scd40_read_command(uint16_t command, bool allowed_during_periodic, uint32_t delay_ms,
+                           uint8_t *buffer, uint8_t bytes_to_read) {
+  int32_t err = PICO_ERROR_NONE;
+  if (running_periodic_mode && allowed_during_periodic) {
+    err = PICO_ERROR_INVALID_STATE;
+  }
+
+  if (err == PICO_ERROR_NONE) {
+    err = scd40_write_header(command, true);
+  }
+
+  if (delay_ms > 0 && err == PICO_ERROR_NONE) {
+    sleep_ms(delay_ms);
+  }
+
+  if (err == PICO_ERROR_NONE) {
+    err = scd40_read(buffer, bytes_to_read);
+  }
+
+  return err;
+}
+
+int32_t scd40_get_serial_number(uint16_t *serial_number) {
+  printf("Retrieving SCD40x Serial Number...\n");
+  uint8_t output[6] = {0};
+  int32_t err       = scd40_read_command(SCD4x_CMD_GET_SERIAL_NUMBER, false, 1, output, 6);
+
+  if (err) {
+    printf("Non zero error code!\n");
+  }
+
+  serial_number[2] = (uint16_t)(output[4] << 8) | output[5];
+  serial_number[1] = (uint16_t)(output[2] << 8) | output[3];
+  serial_number[0] = (uint16_t)(output[0] << 8) | output[1];
+
+  printf("Serial Number: 0x%04X %04X %04X\n", serial_number[0], serial_number[1], serial_number[2]);
+  for (int i = 0; i < 6; i++) {
+    printf("%u: 0x%02X\n", i, output[i]);
+  }
+
+  return err;
 }
