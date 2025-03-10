@@ -101,15 +101,14 @@ int32_t scd40_write(uint16_t command, bool add_checksum, bool stop_bit) {
 }
 
 int32_t scd40_write_header(uint16_t command, bool stop_bit) {
-  // TODO figure out CRC location
   uint8_t transfer[2];
 
   transfer[0] = command >> 8;
   transfer[1] = command & 0xFF;
   i2c_write_blocking(i2c_default, SCD40_ADDR, transfer, 2, stop_bit);
 
-  printf("transfer[0] 0x%X\n", transfer[0]);
-  printf("transfer[1] 0x%X\n", transfer[1]);
+  // printf("transfer[0] 0x%X\n", transfer[0]);
+  // printf("transfer[1] 0x%X\n", transfer[1]);
 
   return PICO_ERROR_NONE;
 }
@@ -161,6 +160,7 @@ void scd40_init(bool enable_internal_pullup) {
 int32_t scd40_header_only_command(uint16_t command, bool allowed_during_periodic,
                                   uint32_t delay_ms) {
   if (running_periodic_mode && allowed_during_periodic) {
+    printf("Attempted running illegal command during measurement mode!\n");
     return PICO_ERROR_INVALID_STATE;
   }
   scd40_write_header(command, true);
@@ -235,10 +235,48 @@ int32_t scd40_read_command(uint16_t command, bool allowed_during_periodic, uint3
   return err;
 }
 
+int32_t scd40_read_measurement(uint16_t *co2_ppm, uint16_t *temp_cel, uint16_t *rel_humidity) {
+  printf("Retrieving SCD40x measurement...\n");
+  uint8_t output[6] = {0};
+
+  // TODO: Check if there's data ready to be read
+  int32_t err = PICO_ERROR_NONE;
+  err         = scd40_read_command(SCD4x_CMD_READ_MEASUREMENT, true, 1, output, 6);
+  if (err) {
+    printf("Non zero error code!\n");
+  }
+
+  *rel_humidity = (uint16_t)(output[4] << 8) | output[5];
+  *rel_humidity = 100 * ((uint32_t)*rel_humidity) / (1 << 16);  // Apply post-processing
+  *temp_cel     = (uint16_t)(output[2] << 8) | output[3];
+  *temp_cel     = -45 + 175 * ((uint32_t)*temp_cel) / (1 << 16);  // Apply post-processing
+  *co2_ppm      = (uint16_t)(output[0] << 8) | output[1];  // CO2 doesn't require post-processing
+
+  return err;
+}
+
+int32_t scd40_get_data_ready_status(bool *data_waiting) {
+  printf("Checking for waiting SCD40x measurement...\n");
+  uint8_t output[2] = {0};
+  int32_t err       = PICO_ERROR_NONE;
+
+  err = scd40_read_command(SCD4x_CMD_GET_DATA_READY_STATUS, true, 1, output, 2);
+  if (err) {
+    printf("Non zero error code!\n");
+  }
+
+  uint16_t result = (uint16_t)(output[0] << 8) | output[1];
+  *data_waiting   = (result & 0xFFF) != 0;  // If bits 11:0 are non-zero, data is waiting
+  printf("Data waiting result: 0x%04X (%u)\n", result, *data_waiting);
+
+  return err;
+}
+
 int32_t scd40_get_serial_number(uint16_t *serial_number) {
   printf("Retrieving SCD40x Serial Number...\n");
   uint8_t output[6] = {0};
-  int32_t err       = scd40_read_command(SCD4x_CMD_GET_SERIAL_NUMBER, false, 1, output, 6);
+  int32_t err       = PICO_ERROR_NONE;
+  err               = scd40_read_command(SCD4x_CMD_GET_SERIAL_NUMBER, false, 1, output, 6);
 
   if (err) {
     printf("Non zero error code!\n");
