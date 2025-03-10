@@ -84,6 +84,7 @@ target_link_libraries(${APP_NAME}
     pico_cyw43_arch_lwip_sys_freertos
     pico_stdlib
     hardware_pwm
+    hardware_i2c
     pico_lwip_iperf
     FreeRTOS-Kernel-Heap4 # FreeRTOS kernel and dynamic heap
 )
